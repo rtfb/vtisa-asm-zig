@@ -23,6 +23,12 @@ pub const Tokenizer = struct {
             if (b == ' ' or b == '\n' or b == '\t') {
                 return self.make_token(i);
             }
+            if (b == '/') {
+                const comment = self.try_comment(i);
+                if (comment.was_found) {
+                    return self.make_token(comment.end);
+                }
+            }
             i += 1;
         }
         if (i > self.pos) {
@@ -37,6 +43,45 @@ pub const Tokenizer = struct {
         @memcpy(token, self.input[self.pos..to_pos]);
         self.pos = to_pos;
         return token;
+    }
+
+    fn try_comment(self: *Tokenizer, start: usize) struct { was_found: bool, end: usize } {
+        if (start >= self.input.len) {
+            return .{ .was_found = false, .end = start };
+        }
+        var i = start + 1;
+        if (i >= self.input.len) {
+            return .{ .was_found = false, .end = start };
+        }
+        var b = self.input[i];
+        if (b == '*') {
+            const multiline = self.try_multiline(i);
+            if (multiline.was_found) {
+                return .{ .was_found = true, .end = multiline.end };
+            }
+        }
+        if (b != '/') {
+            return .{ .was_found = false, .end = start };
+        }
+        while (i < self.input.len and b != '\n') {
+            b = self.input[i];
+            i += 1;
+        }
+        return .{ .was_found = true, .end = i };
+    }
+
+    fn try_multiline(self: *Tokenizer, start: usize) struct { was_found: bool, end: usize } {
+        if (start >= self.input.len) {
+            return .{ .was_found = false, .end = start };
+        }
+        var i = start;
+        while (i < self.input.len - 2) {
+            i += 1;
+            if (self.input[i] == '*' and self.input[i + 1] == '/') {
+                return .{ .was_found = true, .end = i + 2 };
+            }
+        }
+        return .{ .was_found = false, .end = start };
     }
 
     fn skip_space(self: *Tokenizer, start: usize) usize {
@@ -78,10 +123,10 @@ test "Tokenizer.next() returns empty token on empty input" {
 }
 
 test "Tokenizer loop" {
-    const input = "foo bar baz";
+    const input = "foo bar / baz";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
-    const want_tokens: [3][]const u8 = .{
-        "foo", "bar", "baz",
+    const want_tokens: [4][]const u8 = .{
+        "foo", "bar", "/", "baz",
     };
     var i: u32 = 0;
     while (true) {
@@ -132,4 +177,52 @@ test "Tokenizer skip_space" {
         std.testing.allocator.free(tok);
         i += 1;
     }
+}
+
+test "zig-style comments" {
+    const input = "  foo, bar;  // this is a comment";
+    var tokzer = Tokenizer.init(std.testing.allocator, input);
+    const want_tokens: [3][]const u8 = .{
+        "foo,", "bar;", "// this is a comment",
+    };
+    var i: u32 = 0;
+    var ntokens: u32 = 0;
+    while (true) {
+        const tok = try tokzer.next();
+        if (tok.len == 0) {
+            break;
+        }
+        ntokens += 1;
+        try std.testing.expectEqualStrings(want_tokens[i], tok);
+        std.testing.allocator.free(tok);
+        i += 1;
+    }
+    try std.testing.expectEqual(3, ntokens);
+}
+
+test "multiline comments" {
+    const input =
+        \\/*
+        \\ * this is a multiline comment
+        \\ */
+        \\foo
+    ;
+    var tokzer = Tokenizer.init(std.testing.allocator, input);
+    const want_tokens: [2][]const u8 = .{
+        "/*\n * this is a multiline comment\n */",
+        "foo",
+    };
+    var i: u32 = 0;
+    var ntokens: u32 = 0;
+    while (true) {
+        const tok = try tokzer.next();
+        if (tok.len == 0) {
+            break;
+        }
+        ntokens += 1;
+        try std.testing.expectEqualStrings(want_tokens[i], tok);
+        std.testing.allocator.free(tok);
+        i += 1;
+    }
+    try std.testing.expectEqual(2, ntokens);
 }
