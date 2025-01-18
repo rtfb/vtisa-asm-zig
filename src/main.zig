@@ -31,4 +31,25 @@ pub fn disasm(filename: []const u8) !void {
 pub fn assemble(filename: []const u8) !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Asm {s}\n", .{filename});
+    const data = try read_file(filename);
+    defer std.heap.page_allocator.free(data);
+    try stdout.print("Input data: {s}\n", .{data});
+}
+
+pub fn read_file(filename: []const u8) ![]u8 {
+    var file = try std.fs.cwd().openFile(filename, .{});
+    defer file.close();
+
+    // alternative way, involving a reader and explicitly using a GPA:
+    //
+    // var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
+    // const gpa = general_purpose_allocator.allocator();
+    // const data = try file.reader().readAllAlloc(
+    //     gpa,
+    //     1e6,
+    // );
+    // defer gpa.free(data);
+
+    const data = try file.readToEndAlloc(std.heap.page_allocator, 1e6);
+    return data;
 }
