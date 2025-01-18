@@ -16,7 +16,7 @@ pub const Tokenizer = struct {
 
     pub fn next(self: *Tokenizer) ![]u8 {
         // const stdout = std.io.getStdOut().writer();
-        var i = self.pos;
+        var i = self.skip_space(self.pos);
         while (i < self.input.len) {
             const b = self.input[i];
             // try stdout.print("input[{d}] = {c}\n", .{ i, b });
@@ -35,7 +35,7 @@ pub const Tokenizer = struct {
         const tok_len = to_pos - self.pos;
         const token = try self.alloc.alloc(u8, tok_len);
         @memcpy(token, self.input[self.pos..to_pos]);
-        self.pos = self.skip_space(to_pos);
+        self.pos = to_pos;
         return token;
     }
 
@@ -49,12 +49,21 @@ pub const Tokenizer = struct {
             i += 1;
             b = self.input[i];
         }
+        self.pos = i;
         return i;
     }
 };
 
 test "Tokenizer.next() returns a token" {
     const input = "foo bar baz";
+    var tokzer = Tokenizer.init(std.testing.allocator, input);
+    const tok = try tokzer.next();
+    try std.testing.expectEqualStrings("foo", tok);
+    std.testing.allocator.free(tok);
+}
+
+test "Tokenizer.next() leading spaces" {
+    const input = "  \t\n  foo bar baz";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const tok = try tokzer.next();
     try std.testing.expectEqualStrings("foo", tok);
