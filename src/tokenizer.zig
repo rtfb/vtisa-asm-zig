@@ -226,3 +226,11 @@ test "multiline comments" {
     }
     try std.testing.expectEqual(2, ntokens);
 }
+
+test "self-closing multiline comment" {
+    const input = "/**/";
+    var tokzer = Tokenizer.init(std.testing.allocator, input);
+    const tok = try tokzer.next();
+    try std.testing.expectEqualStrings("/**/", tok);
+    std.testing.allocator.free(tok);
+}
