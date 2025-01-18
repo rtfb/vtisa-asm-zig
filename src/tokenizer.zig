@@ -21,22 +21,22 @@ pub const Tokenizer = struct {
             const b = self.input[i];
             // try stdout.print("input[{d}] = {c}\n", .{ i, b });
             if (b == ' ' or b == '\n' or b == '\t') {
-                const tok_len = i - self.pos;
-                const token = try self.alloc.alloc(u8, tok_len);
-                @memcpy(token, self.input[self.pos..i]);
-                self.pos = self.skip_space(i);
-                return token;
+                return self.make_token(i);
             }
             i += 1;
         }
-        const tok_len = i - self.pos;
-        if (tok_len > 0) {
-            const token = try self.alloc.alloc(u8, tok_len);
-            @memcpy(token, self.input[self.pos..i]);
-            self.pos = self.skip_space(i);
-            return token;
+        if (i > self.pos) {
+            return self.make_token(i);
         }
         return "";
+    }
+
+    fn make_token(self: *Tokenizer, to_pos: usize) ![]u8 {
+        const tok_len = to_pos - self.pos;
+        const token = try self.alloc.alloc(u8, tok_len);
+        @memcpy(token, self.input[self.pos..to_pos]);
+        self.pos = self.skip_space(to_pos);
+        return token;
     }
 
     fn skip_space(self: *Tokenizer, start: usize) usize {
