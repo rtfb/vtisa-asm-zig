@@ -20,16 +20,26 @@ pub const Tokenizer = struct {
         while (i < self.input.len) {
             const b = self.input[i];
             // try stdout.print("input[{d}] = {c}\n", .{ i, b });
-            if (b == ' ' or b == '\n') {
+            if (b == ' ' or b == '\n' or b == '\t') {
                 const tok_len = i - self.pos;
                 const token = try self.alloc.alloc(u8, tok_len);
                 @memcpy(token, self.input[self.pos..i]);
-                self.pos = i + 1;
+                self.pos = self.skip_space(i + 1);
                 return token;
             }
             i += 1;
         }
         return "";
+    }
+
+    fn skip_space(self: *Tokenizer, start: usize) usize {
+        var i = start;
+        var b = self.input[i];
+        while (b == ' ' or b == '\n' or b == '\t') {
+            i += 1;
+            b = self.input[i];
+        }
+        return i;
     }
 };
 
@@ -71,6 +81,24 @@ test "Tokenizer loop with one token" {
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const want_tokens: [1][]const u8 = .{
         "/.zig-cache",
+    };
+    var i: u32 = 0;
+    while (true) {
+        const tok = try tokzer.next();
+        if (tok.len == 0) {
+            break;
+        }
+        try std.testing.expectEqualStrings(want_tokens[i], tok);
+        std.testing.allocator.free(tok);
+        i += 1;
+    }
+}
+
+test "Tokenizer skip_space" {
+    const input = "foo   bar \t\n    baz";
+    var tokzer = Tokenizer.init(std.testing.allocator, input);
+    const want_tokens: [3][]const u8 = .{
+        "foo", "bar", "baz",
     };
     var i: u32 = 0;
     while (true) {
