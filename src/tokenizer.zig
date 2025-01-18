@@ -24,15 +24,25 @@ pub const Tokenizer = struct {
                 const tok_len = i - self.pos;
                 const token = try self.alloc.alloc(u8, tok_len);
                 @memcpy(token, self.input[self.pos..i]);
-                self.pos = self.skip_space(i + 1);
+                self.pos = self.skip_space(i);
                 return token;
             }
             i += 1;
+        }
+        const tok_len = i - self.pos;
+        if (tok_len > 0) {
+            const token = try self.alloc.alloc(u8, tok_len);
+            @memcpy(token, self.input[self.pos..i]);
+            self.pos = self.skip_space(i);
+            return token;
         }
         return "";
     }
 
     fn skip_space(self: *Tokenizer, start: usize) usize {
+        if (start >= self.input.len) {
+            return start;
+        }
         var i = start;
         var b = self.input[i];
         while (b == ' ' or b == '\n' or b == '\t') {
@@ -83,15 +93,18 @@ test "Tokenizer loop with one token" {
         "/.zig-cache",
     };
     var i: u32 = 0;
+    var ntokens: u32 = 0;
     while (true) {
         const tok = try tokzer.next();
         if (tok.len == 0) {
             break;
         }
+        ntokens += 1;
         try std.testing.expectEqualStrings(want_tokens[i], tok);
         std.testing.allocator.free(tok);
         i += 1;
     }
+    try std.testing.expectEqual(1, ntokens);
 }
 
 test "Tokenizer skip_space" {
