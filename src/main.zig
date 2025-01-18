@@ -1,4 +1,6 @@
 const std = @import("std");
+const tokenize = @import("tokenizer.zig").tokenize;
+const Tokenizer = @import("tokenizer.zig").Tokenizer;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
@@ -25,7 +27,7 @@ pub fn main() !void {
 
 pub fn disasm(filename: []const u8) !void {
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Disasm {s}\n", .{filename});
+    try stdout.print("Disasm {s}. Not implemented.\n", .{filename});
 }
 
 pub fn assemble(filename: []const u8) !void {
@@ -34,6 +36,13 @@ pub fn assemble(filename: []const u8) !void {
     const data = try read_file(filename);
     defer std.heap.page_allocator.free(data);
     try stdout.print("Input data: {s}\n", .{data});
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var tokenizer = Tokenizer.init(allocator, data);
+    const token = try tokenizer.next();
+    try stdout.print("token: {s}\n", .{token});
 }
 
 pub fn read_file(filename: []const u8) ![]u8 {
