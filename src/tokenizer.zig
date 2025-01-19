@@ -14,7 +14,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    pub fn next(self: *Tokenizer) ![]u8 {
+    pub fn next(self: *Tokenizer) !Token {
         // const stdout = std.io.getStdOut().writer();
         var i = self.skip_space(self.pos);
         while (i < self.input.len) {
@@ -34,15 +34,15 @@ pub const Tokenizer = struct {
         if (i > self.pos) {
             return self.make_token(i);
         }
-        return "";
+        return Token.init("");
     }
 
-    fn make_token(self: *Tokenizer, to_pos: usize) ![]u8 {
+    fn make_token(self: *Tokenizer, to_pos: usize) !Token {
         const tok_len = to_pos - self.pos;
         const token = try self.alloc.alloc(u8, tok_len);
         @memcpy(token, self.input[self.pos..to_pos]);
         self.pos = to_pos;
-        return token;
+        return Token.init(token);
     }
 
     fn try_comment(self: *Tokenizer, start: usize) struct { was_found: bool, end: usize } {
@@ -99,27 +99,42 @@ pub const Tokenizer = struct {
     }
 };
 
+pub const Token = struct {
+    text: []const u8,
+    // position: pos, // TODO
+
+    pub fn init(text: []const u8) Token {
+        return Token{
+            .text = text,
+        };
+    }
+
+    pub fn is_eof(self: *const Token) bool {
+        return self.text.len == 0;
+    }
+};
+
 test "Tokenizer.next() returns a token" {
     const input = "foo bar baz";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const tok = try tokzer.next();
-    try std.testing.expectEqualStrings("foo", tok);
-    std.testing.allocator.free(tok);
+    try std.testing.expectEqualStrings("foo", tok.text);
+    std.testing.allocator.free(tok.text);
 }
 
 test "Tokenizer.next() leading spaces" {
     const input = "  \t\n  foo bar baz";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const tok = try tokzer.next();
-    try std.testing.expectEqualStrings("foo", tok);
-    std.testing.allocator.free(tok);
+    try std.testing.expectEqualStrings("foo", tok.text);
+    std.testing.allocator.free(tok.text);
 }
 
 test "Tokenizer.next() returns empty token on empty input" {
     const input = "";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const tok = try tokzer.next();
-    try std.testing.expectEqualStrings("", tok);
+    try std.testing.expectEqualStrings("", tok.text);
 }
 
 test "Tokenizer loop" {
@@ -131,11 +146,11 @@ test "Tokenizer loop" {
     var i: u32 = 0;
     while (true) {
         const tok = try tokzer.next();
-        if (tok.len == 0) {
+        if (tok.is_eof()) {
             break;
         }
-        try std.testing.expectEqualStrings(want_tokens[i], tok);
-        std.testing.allocator.free(tok);
+        try std.testing.expectEqualStrings(want_tokens[i], tok.text);
+        std.testing.allocator.free(tok.text);
         i += 1;
     }
 }
@@ -150,12 +165,12 @@ test "Tokenizer loop with one token" {
     var ntokens: u32 = 0;
     while (true) {
         const tok = try tokzer.next();
-        if (tok.len == 0) {
+        if (tok.is_eof()) {
             break;
         }
         ntokens += 1;
-        try std.testing.expectEqualStrings(want_tokens[i], tok);
-        std.testing.allocator.free(tok);
+        try std.testing.expectEqualStrings(want_tokens[i], tok.text);
+        std.testing.allocator.free(tok.text);
         i += 1;
     }
     try std.testing.expectEqual(1, ntokens);
@@ -170,11 +185,11 @@ test "Tokenizer skip_space" {
     var i: u32 = 0;
     while (true) {
         const tok = try tokzer.next();
-        if (tok.len == 0) {
+        if (tok.is_eof()) {
             break;
         }
-        try std.testing.expectEqualStrings(want_tokens[i], tok);
-        std.testing.allocator.free(tok);
+        try std.testing.expectEqualStrings(want_tokens[i], tok.text);
+        std.testing.allocator.free(tok.text);
         i += 1;
     }
 }
@@ -189,12 +204,12 @@ test "zig-style comments" {
     var ntokens: u32 = 0;
     while (true) {
         const tok = try tokzer.next();
-        if (tok.len == 0) {
+        if (tok.is_eof()) {
             break;
         }
         ntokens += 1;
-        try std.testing.expectEqualStrings(want_tokens[i], tok);
-        std.testing.allocator.free(tok);
+        try std.testing.expectEqualStrings(want_tokens[i], tok.text);
+        std.testing.allocator.free(tok.text);
         i += 1;
     }
     try std.testing.expectEqual(3, ntokens);
@@ -216,12 +231,12 @@ test "multiline comments" {
     var ntokens: u32 = 0;
     while (true) {
         const tok = try tokzer.next();
-        if (tok.len == 0) {
+        if (tok.is_eof()) {
             break;
         }
         ntokens += 1;
-        try std.testing.expectEqualStrings(want_tokens[i], tok);
-        std.testing.allocator.free(tok);
+        try std.testing.expectEqualStrings(want_tokens[i], tok.text);
+        std.testing.allocator.free(tok.text);
         i += 1;
     }
     try std.testing.expectEqual(2, ntokens);
@@ -231,6 +246,6 @@ test "self-closing multiline comment" {
     const input = "/**/";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const tok = try tokzer.next();
-    try std.testing.expectEqualStrings("/**/", tok);
-    std.testing.allocator.free(tok);
+    try std.testing.expectEqualStrings("/**/", tok.text);
+    std.testing.allocator.free(tok.text);
 }
