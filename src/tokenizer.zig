@@ -85,7 +85,10 @@ pub const Tokenizer = struct {
     }
 
     fn skip_space(self: *Tokenizer, start: usize) usize {
-        if (start >= self.input.len) {
+        if (self.input.len == 0) {
+            return start;
+        }
+        if (start >= self.input.len - 1) {
             return start;
         }
         var i = start;
@@ -139,6 +142,24 @@ test "Tokenizer.next() returns empty token on empty input" {
 
 test "Tokenizer loop" {
     const input = "foo bar / baz";
+    var tokzer = Tokenizer.init(std.testing.allocator, input);
+    const want_tokens: [4][]const u8 = .{
+        "foo", "bar", "/", "baz",
+    };
+    var i: u32 = 0;
+    while (true) {
+        const tok = try tokzer.next();
+        if (tok.is_eof()) {
+            break;
+        }
+        try std.testing.expectEqualStrings(want_tokens[i], tok.text);
+        std.testing.allocator.free(tok.text);
+        i += 1;
+    }
+}
+
+test "Tokenizer loop with newline at the end" {
+    const input = "foo bar / baz\n";
     var tokzer = Tokenizer.init(std.testing.allocator, input);
     const want_tokens: [4][]const u8 = .{
         "foo", "bar", "/", "baz",
