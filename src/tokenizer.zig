@@ -115,6 +115,14 @@ pub const Token = struct {
     pub fn is_eof(self: *const Token) bool {
         return self.text.len == 0;
     }
+
+    pub fn has_suffix(self: *const Token, ch: u8) bool {
+        return self.text[self.text.len - 1] == ch;
+    }
+
+    pub fn trim_label(self: *const Token) []const u8 {
+        return self.text[0 .. self.text.len - 1];
+    }
 };
 
 test "Tokenizer.next() returns a token" {

@@ -1,6 +1,7 @@
 const std = @import("std");
 const tokenize = @import("tokenizer.zig").tokenize;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
+const Assembler = @import("assembler.zig").Assembler;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
@@ -41,8 +42,18 @@ pub fn assemble(filename: []const u8) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
     var tokenizer = Tokenizer.init(allocator, data);
-    const token = try tokenizer.next();
-    try stdout.print("token: {s}\n", .{token});
+    while (true) {
+        const tok = try tokenizer.next();
+        if (tok.is_eof()) {
+            break;
+        }
+        try stdout.print("token: {s}\n", .{tok.text});
+    }
+    var assembler = try Assembler.init(allocator, tokenizer);
+    _ = try assembler.do();
+    // const token = try tokenizer.next();
+    // try stdout.print("token: {s}\n", .{token});
+    // try stdout.print("binary: {s}\n", .{try assembler.do()});
 }
 
 pub fn read_file(filename: []const u8) ![]u8 {
