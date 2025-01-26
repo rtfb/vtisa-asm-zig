@@ -10,6 +10,7 @@ const ParamType = @import("isa.zig").ParamType;
 const lookupReg = @import("isa.zig").lookupReg;
 
 pub const AssemblerError = error{
+    ImmediateTooLarge,
     ProgramTooLarge,
     UnknownLabel,
     UnknownOpcode,
@@ -108,8 +109,20 @@ pub const Assembler = struct {
     }
 
     fn emitImmediateOpcode(self: *Assembler, interm: intermediateOp) !void {
-        const immediate = processImmediate(interm.op, interm.param.text);
-        self.emit(interm.op, immediate);
+        const token = interm.param.text;
+        var immediate: u8 = undefined;
+        if (std.ascii.startsWithIgnoreCase(token, "0x")) {
+            immediate = try std.fmt.parseInt(u8, token, 16);
+        } else if (std.ascii.startsWithIgnoreCase(token, "0o")) {
+            immediate = try std.fmt.parseInt(u8, token, 8);
+        } else {
+            immediate = try std.fmt.parseInt(u8, token, 10);
+        }
+        const op_and_limit = self.xformLoadImmediate(interm.op, immediate);
+        if (immediate > op_and_limit.limit) {
+            return AssemblerError.ImmediateTooLarge;
+        }
+        self.emit(op_and_limit.opcode, immediate);
     }
 
     fn emitOpcodeNoParam(self: *Assembler, interm: intermediateOp) void {
@@ -214,9 +227,4 @@ fn makeInterm() intermediateOp {
         .op = Opcode.init(),
         .param = Token.init("", false),
     };
-}
-
-fn processImmediate(_: Opcode, _: []const u8) u8 {
-    // TODO: implement
-    return 0;
 }
