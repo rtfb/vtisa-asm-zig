@@ -41,19 +41,20 @@ pub fn assemble(filename: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    var tokenizer = Tokenizer.init(allocator, data);
-    while (true) {
-        const tok = try tokenizer.next();
-        if (tok.is_eof()) {
-            break;
-        }
-        try stdout.print("token: {s}\n", .{tok.text});
-    }
+    const tokenizer = Tokenizer.init(allocator, data);
     var assembler = try Assembler.init(allocator, tokenizer);
-    _ = try assembler.do();
-    // const token = try tokenizer.next();
-    // try stdout.print("token: {s}\n", .{token});
-    // try stdout.print("binary: {s}\n", .{try assembler.do()});
+    const out = try assembler.do();
+    try stdout.print("v3.0 hex words addressed\n", .{});
+    for (out, 0..) |byte, i| {
+        if (i % 16 == 0) {
+            if (i > 0) {
+                try stdout.print("\n", .{});
+            }
+            try stdout.print("{x:0>2}:", .{i});
+        }
+        try stdout.print(" {x:0>2}", .{byte});
+    }
+    try stdout.print("\n", .{});
 }
 
 pub fn read_file(filename: []const u8) ![]u8 {

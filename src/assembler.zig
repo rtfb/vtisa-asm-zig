@@ -7,10 +7,13 @@ const Token = @import("tokenizer.zig").Token;
 const Opcode = @import("isa.zig").Opcode;
 const ISA = @import("isa.zig").ISA;
 const ParamType = @import("isa.zig").ParamType;
+const lookupReg = @import("isa.zig").lookupReg;
 
 pub const AssemblerError = error{
     ProgramTooLarge,
+    UnknownLabel,
     UnknownOpcode,
+    UnknownRegister,
 };
 
 pub const Assembler = struct {
@@ -18,7 +21,9 @@ pub const Assembler = struct {
 
     alloc: Allocator,
     tokenizer: Tokenizer,
-    intermediate_repr: [255]intermediateOp,
+    intermediate_repr: [256]intermediateOp,
+    output: [256]u8,
+    output_idx: u16,
     label_map: LabelMap,
     isa: ISA,
     err: []const u8,
@@ -27,8 +32,9 @@ pub const Assembler = struct {
         return Assembler{
             .alloc = allocator,
             .tokenizer = tokenizer,
-            .intermediate_repr = [_]intermediateOp{makeInterm()} ** 255,
-            // .label_map = HashMap.init(allocator),
+            .intermediate_repr = [_]intermediateOp{makeInterm()} ** 256,
+            .output = [_]u8{0} ** 256,
+            .output_idx = 0,
             .label_map = LabelMap.init(allocator),
             .isa = try ISA.init(allocator),
             .err = "",
@@ -37,7 +43,8 @@ pub const Assembler = struct {
 
     pub fn do(self: *Assembler) ![]const u8 {
         try self.firstPass();
-        return try self.secondPass();
+        try self.secondPass();
+        return &self.output;
     }
 
     fn firstPass(self: *Assembler) !void {
@@ -48,6 +55,9 @@ pub const Assembler = struct {
             if (tok.is_eof()) {
                 break;
             }
+            if (tok.is_comment) {
+                continue;
+            }
             const opcode = &self.intermediate_repr[op_index];
             opcode.addr = @truncate(addr);
             if (tok.has_suffix(':')) {
@@ -55,17 +65,13 @@ pub const Assembler = struct {
                 continue;
             }
             if (opcode.op.is_empty()) {
-                const maybe_op = self.isa.op_map.get(tok.text);
+                const maybe_op = self.isa.lookupOp(tok.text);
                 const op = maybe_op orelse {
                     return AssemblerError.UnknownOpcode;
                 };
-                // if (!self.isa.op_map.contains(tok.text)) {
-                //     return AssemblerError.UnknownOpcode;
-                // }
                 if (addr > 255) {
                     return AssemblerError.ProgramTooLarge;
                 }
-                // const op = try self.isa.op_map.get(tok.text);
                 opcode.op = op;
                 if (op.param == ParamType.is_ignored) {
                     op_index += 1;
@@ -83,14 +89,116 @@ pub const Assembler = struct {
         }
     }
 
-    fn secondPass(self: *Assembler) ![]const u8 {
-        var output = [_]u8{0} ** 255;
-        var out_index: u8 = 0;
+    fn secondPass(self: *Assembler) !void {
         for (self.intermediate_repr) |interm| {
-            output[out_index] = interm.op.emit(0);
-            out_index += 1;
+            switch (interm.op.param) {
+                ParamType.is_register => try self.emitRegOpcode(interm),
+                ParamType.is_immediate => try self.emitImmediateOpcode(interm),
+                ParamType.is_ignored => self.emitOpcodeNoParam(interm),
+                ParamType.is_label => try self.emitJumpOpcode(interm),
+            }
         }
-        return &output;
+    }
+
+    fn emitRegOpcode(self: *Assembler, interm: intermediateOp) !void {
+        const reg = lookupReg(interm.param.text) orelse {
+            return AssemblerError.UnknownRegister;
+        };
+        self.emit(interm.op, reg.code);
+    }
+
+    fn emitImmediateOpcode(self: *Assembler, interm: intermediateOp) !void {
+        const immediate = processImmediate(interm.op, interm.param.text);
+        self.emit(interm.op, immediate);
+    }
+
+    fn emitOpcodeNoParam(self: *Assembler, interm: intermediateOp) void {
+        self.emit(interm.op, 0);
+    }
+
+    fn emitJumpOpcode(self: *Assembler, interm: intermediateOp) !void {
+        const jump_addr = self.label_map.get(interm.param.text) orelse {
+            return AssemblerError.UnknownLabel;
+        };
+        self.emitLI(jump_addr);
+        self.emitSJF(interm.op.mnemonic);
+        self.emitJMP(jump_addr);
+    }
+
+    fn xformLoadImmediate(self: *Assembler, in_op: Opcode, imm: u8) struct { opcode: Opcode, limit: u8 } {
+        if (std.mem.eql(u8, in_op.mnemonic, "li")) {
+            if (imm <= 7) {
+                return .{ .opcode = in_op, .limit = 7 };
+            }
+            const new_op = self.isa.lookupOp("li1") orelse {
+                unreachable;
+            };
+            return .{ .opcode = new_op, .limit = 15 };
+        }
+        if (std.mem.eql(u8, in_op.mnemonic, "li0") or std.mem.eql(u8, in_op.mnemonic, "li1")) {
+            return .{ .opcode = in_op, .limit = 15 };
+        }
+        return .{ .opcode = in_op, .limit = 7 };
+    }
+
+    fn emitLI(self: *Assembler, jump_addr: u8) void {
+        const upper_4_bits = (jump_addr & 0xf0) >> 4;
+        const li_op_tmp = self.isa.lookupOp("li") orelse {
+            unreachable;
+        };
+        const li_op_and_limit = self.xformLoadImmediate(li_op_tmp, upper_4_bits);
+        self.emit(li_op_and_limit.opcode, upper_4_bits);
+    }
+
+    fn emitSJF(self: *Assembler, mnemonic: []const u8) void {
+        var op: Opcode = undefined;
+        var param: u8 = 0;
+        if (std.mem.eql(u8, mnemonic, "jz")) {
+            op = self.isa.lookupOp("sjf") orelse {
+                unreachable;
+            };
+            param = 1;
+        } else if (std.mem.eql(u8, mnemonic, "jnz")) {
+            op = self.isa.lookupOp("sjfn") orelse {
+                unreachable;
+            };
+            param = 1;
+        } else if (std.mem.eql(u8, mnemonic, "jo")) {
+            op = self.isa.lookupOp("sjf") orelse {
+                unreachable;
+            };
+            param = 2;
+        } else if (std.mem.eql(u8, mnemonic, "jno")) {
+            op = self.isa.lookupOp("sjfn") orelse {
+                unreachable;
+            };
+            param = 2;
+        }
+        self.emit(op, param);
+    }
+
+    fn emitJMP(self: *Assembler, jump_addr: u8) void {
+        const middle_bit = jump_addr & 0x80;
+        const low_3_bits = jump_addr & 0x07;
+        var jmp: Opcode = undefined;
+        if (middle_bit == 0) {
+            jmp = self.isa.lookupOp("jmplo") orelse {
+                unreachable;
+            };
+        } else {
+            jmp = self.isa.lookupOp("jmphi") orelse {
+                unreachable;
+            };
+        }
+        self.emit(jmp, low_3_bits);
+    }
+
+    pub fn emit(self: *Assembler, op: Opcode, param: u8) void {
+        if (self.output_idx == 255) {
+            return;
+        }
+        self.output[self.output_idx] = op.emit(param);
+        self.output_idx += 1;
     }
 };
 
@@ -104,6 +212,11 @@ fn makeInterm() intermediateOp {
     return intermediateOp{
         .addr = 0,
         .op = Opcode.init(),
-        .param = Token.init(""),
+        .param = Token.init("", false),
     };
+}
+
+fn processImmediate(_: Opcode, _: []const u8) u8 {
+    // TODO: implement
+    return 0;
 }

@@ -21,28 +21,28 @@ pub const Tokenizer = struct {
             const b = self.input[i];
             // try stdout.print("input[{d}] = {c}\n", .{ i, b });
             if (b == ' ' or b == '\n' or b == '\t') {
-                return self.make_token(i);
+                return self.make_token(i, false);
             }
             if (b == '/') {
                 const comment = self.try_comment(i);
                 if (comment.was_found) {
-                    return self.make_token(comment.end);
+                    return self.make_token(comment.end, true);
                 }
             }
             i += 1;
         }
         if (i > self.pos) {
-            return self.make_token(i);
+            return self.make_token(i, false);
         }
-        return Token.init("");
+        return Token.init("", false);
     }
 
-    fn make_token(self: *Tokenizer, to_pos: usize) !Token {
+    fn make_token(self: *Tokenizer, to_pos: usize, is_comment: bool) !Token {
         const tok_len = to_pos - self.pos;
         const token = try self.alloc.alloc(u8, tok_len);
         @memcpy(token, self.input[self.pos..to_pos]);
         self.pos = to_pos;
-        return Token.init(token);
+        return Token.init(token, is_comment);
     }
 
     fn try_comment(self: *Tokenizer, start: usize) struct { was_found: bool, end: usize } {
@@ -104,11 +104,13 @@ pub const Tokenizer = struct {
 
 pub const Token = struct {
     text: []const u8,
+    is_comment: bool,
     // position: pos, // TODO
 
-    pub fn init(text: []const u8) Token {
+    pub fn init(text: []const u8, is_comment: bool) Token {
         return Token{
             .text = text,
+            .is_comment = is_comment,
         };
     }
 

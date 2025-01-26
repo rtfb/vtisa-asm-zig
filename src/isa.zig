@@ -23,6 +23,14 @@ pub const ISA = struct {
         };
     }
 
+    pub fn lookupOp(self: *const ISA, token: []const u8) ?Opcode {
+        var buf: [16]u8 = undefined;
+        const lowercase = std.ascii.lowerString(&buf, token);
+        // const stdout = std.io.getStdOut().writer();
+        // try stdout.print("tt: {s}\n", .{lowercase});
+        return self.op_map.get(lowercase);
+    }
+
     fn initOpMap(alloc: Allocator, opcodes: []const Opcode) !OpcodeMap {
         var m = OpcodeMap.init(alloc);
         for (opcodes) |opcode| {
@@ -190,23 +198,12 @@ pub const ISA = struct {
             .param = ParamType.is_immediate,
         },
     };
-
-    const regs: []const Reg = [_]Reg{
-        Reg.init("r0", 0),
-        Reg.init("r1", 1),
-        Reg.init("r2", 2),
-        Reg.init("r3", 3),
-        Reg.init("r4", 4),
-        Reg.init("r5", 5),
-        Reg.init("r6", 6),
-        Reg.init("r7", 7),
-    };
 };
 
 pub const Opcode = struct {
     code: u8, // binary value of the opcode extracted from the instruction
     mnemonic: []const u8, // the string representation of the instruction
-    param: ParamType = ParamType.is_ignored,
+    param: ParamType = ParamType.is_register,
     is_pseudo: bool = false, // this instruction is a pseudo, expanding to something else
 
     // number of instructions this expands to. Equals one for normal
@@ -244,3 +241,37 @@ pub const Reg = struct {
         };
     }
 };
+
+const regs: []const Reg = &[_]Reg{
+    Reg.init("r0", 0),
+    Reg.init("r1", 1),
+    Reg.init("r2", 2),
+    Reg.init("r3", 3),
+    Reg.init("r4", 4),
+    Reg.init("r5", 5),
+    Reg.init("r6", 6),
+    Reg.init("r7", 7),
+};
+
+pub fn lookupReg(reg_name: []const u8) ?Reg {
+    var buf: [16]u8 = undefined;
+    const lowercase = std.ascii.lowerString(&buf, reg_name);
+    for (regs) |reg| {
+        if (std.mem.eql(u8, reg.name, lowercase)) {
+            return reg;
+        }
+    }
+    return null;
+}
+
+test "ISA op_map gets properly inited" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const isa = try ISA.init(allocator);
+    const got = isa.op_map.get("halt") orelse Opcode.init();
+    try std.testing.expectEqualStrings("halt", got.mnemonic);
+    const got2 = isa.op_map.get("ld") orelse Opcode.init();
+    try std.testing.expectEqualStrings("ld", got2.mnemonic);
+    try std.testing.expectEqual(2, got2.code);
+}
