@@ -5,8 +5,6 @@ const Assembler = @import("assembler.zig").Assembler;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
-    const w = "world";
-    try stdout.print("Hello, {s}\n", .{w});
     const argv = std.os.argv;
     if (argv.len < 2) {
         try stdout.print("Need args\n", .{});
@@ -33,10 +31,8 @@ pub fn disasm(filename: []const u8) !void {
 
 pub fn assemble(filename: []const u8) !void {
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Asm {s}\n", .{filename});
     const data = try read_file(filename);
     defer std.heap.page_allocator.free(data);
-    try stdout.print("Input data: {s}\n", .{data});
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
