@@ -186,12 +186,17 @@ pub const Assembler = struct {
                 unreachable;
             };
             param = 2;
+        } else {
+            op = self.isa.lookupOp("sjf") orelse {
+                unreachable;
+            };
+            param = 0;
         }
         self.emit(op, param);
     }
 
     fn emitJMP(self: *Assembler, jump_addr: u8) void {
-        const middle_bit = jump_addr & 0x80;
+        const middle_bit = jump_addr & 0x08;
         const low_3_bits = jump_addr & 0x07;
         var jmp: Opcode = undefined;
         if (middle_bit == 0) {
