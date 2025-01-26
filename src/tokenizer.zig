@@ -40,7 +40,11 @@ pub const Tokenizer = struct {
     fn make_token(self: *Tokenizer, to_pos: usize, is_comment: bool) !Token {
         const tok_len = to_pos - self.pos;
         const token = try self.alloc.alloc(u8, tok_len);
-        @memcpy(token, self.input[self.pos..to_pos]);
+        if (is_comment) {
+            @memcpy(token, self.input[self.pos..to_pos]);
+        } else {
+            _ = std.ascii.lowerString(token, self.input[self.pos..to_pos]);
+        }
         self.pos = to_pos;
         return Token.init(token, is_comment);
     }

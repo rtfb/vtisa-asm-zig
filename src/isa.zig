@@ -254,10 +254,8 @@ const regs: []const Reg = &[_]Reg{
 };
 
 pub fn lookupReg(reg_name: []const u8) ?Reg {
-    var buf: [16]u8 = undefined;
-    const lowercase = std.ascii.lowerString(&buf, reg_name);
     for (regs) |reg| {
-        if (std.mem.eql(u8, reg.name, lowercase)) {
+        if (std.mem.eql(u8, reg.name, reg_name)) {
             return reg;
         }
     }
