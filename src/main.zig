@@ -4,33 +4,61 @@ const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Assembler = @import("assembler.zig").Assembler;
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+    var buf: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&buf);
+    const stdout = &stdout_writer.interface;
     const argv = std.os.argv;
-    if (argv.len < 2) {
-        try stdout.print("Need args\n", .{});
-        std.process.exit(0);
+    const ra = try runargs.init(stdout, argv);
+    if (ra.do_disasm) {
+        try disasm(stdout, ra.filename);
+    } else if (ra.do_assemble) {
+        try assemble(stdout, ra.filename);
     }
-    const arg1: [:0]const u8 = std.mem.span(argv[1]);
-    if (std.mem.eql(u8, arg1, "-d")) {
-        if (argv.len < 3) {
-            try stdout.print("Disasm: need moar args\n", .{});
-            std.process.exit(0);
+    stdout.flush() catch |err| {
+        std.debug.print("Error flushing stdout buffer: {any}\n", .{err});
+    };
+}
+
+const runargs = struct {
+    do_disasm: bool,
+    do_assemble: bool,
+    filename: []const u8,
+
+    fn init(w: *std.Io.Writer, argv: [][*:0]u8) !runargs {
+        const do_nothing = runargs{
+            .do_disasm = false,
+            .do_assemble = false,
+            .filename = "",
+        };
+        if (argv.len < 2) {
+            try w.print("Need args\n", .{});
+            return do_nothing;
         }
-        const filename: [:0]const u8 = std.mem.span(argv[2]);
-        try disasm(filename);
-    } else {
-        const filename: [:0]const u8 = std.mem.span(argv[1]);
-        try assemble(filename);
+        const arg1: [:0]const u8 = std.mem.span(argv[1]);
+        if (std.mem.eql(u8, arg1, "-d")) {
+            if (argv.len < 3) {
+                try w.print("Disasm: need moar args\n", .{});
+                return do_nothing;
+            }
+            return .{
+                .do_disasm = true,
+                .do_assemble = false,
+                .filename = std.mem.span(argv[2]),
+            };
+        }
+        return .{
+            .do_disasm = false,
+            .do_assemble = true,
+            .filename = std.mem.span(argv[1]),
+        };
     }
+};
+
+pub fn disasm(w: *std.Io.Writer, filename: []const u8) !void {
+    try w.print("Disasm {s}. Not implemented.\n", .{filename});
 }
 
-pub fn disasm(filename: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.print("Disasm {s}. Not implemented.\n", .{filename});
-}
-
-pub fn assemble(filename: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
+pub fn assemble(w: *std.Io.Writer, filename: []const u8) !void {
     const data = try read_file(filename);
     defer std.heap.page_allocator.free(data);
 
@@ -40,17 +68,17 @@ pub fn assemble(filename: []const u8) !void {
     const tokenizer = Tokenizer.init(allocator, data);
     var assembler = try Assembler.init(allocator, tokenizer);
     const out = try assembler.do();
-    try stdout.print("v3.0 hex words addressed\n", .{});
+    try w.print("v3.0 hex words addressed\n", .{});
     for (out, 0..) |byte, i| {
         if (i % 16 == 0) {
             if (i > 0) {
-                try stdout.print("\n", .{});
+                try w.print("\n", .{});
             }
-            try stdout.print("{x:0>2}:", .{i});
+            try w.print("{x:0>2}:", .{i});
         }
-        try stdout.print(" {x:0>2}", .{byte});
+        try w.print(" {x:0>2}", .{byte});
     }
-    try stdout.print("\n", .{});
+    try w.print("\n", .{});
 }
 
 pub fn read_file(filename: []const u8) ![]u8 {
